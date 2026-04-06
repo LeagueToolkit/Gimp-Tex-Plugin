@@ -1,0 +1,400 @@
+"""
+tex_core.py - League of Legends TEX format handler
+
+Handles TEX file reading/writing, DDS header conversion for GIMP's native
+DDS loader, mipmap generation with Lanczos3 resampling, and BGRA8 conversion.
+
+TEX Header (12 bytes):
+  Offset 0:  uint32  signature   0x00584554 ("TEX\0")
+  Offset 4:  uint16  width
+  Offset 6:  uint16  height
+  Offset 8:  uint8   unknown1    (always 1)
+  Offset 9:  uint8   format      (10=DXT1, 12=DXT5, 20=BGRA8)
+  Offset 10: uint8   unknown2    (always 0)
+  Offset 11: uint8   mipmaps     (0 or 1)
+  Offset 12: ...     data
+
+Mipmaps are stored smallest-to-largest in TEX, largest-to-smallest in DDS.
+"""
+
+import struct
+import math
+import os
+import tempfile
+
+TEX_SIGNATURE = 0x00584554
+
+# TEX format constants
+FMT_DXT1 = 10
+FMT_DXT5 = 12
+FMT_BGRA8 = 20
+
+# Block properties per format: (block_size, bytes_per_block)
+BLOCK_INFO = {
+    FMT_DXT1: (4, 8),
+    FMT_DXT5: (4, 16),
+    FMT_BGRA8: (1, 4),
+}
+
+# DDS constants
+DDS_MAGIC = 0x20534444  # "DDS "
+DDS_HEADER_SIZE = 124
+DDSD_CAPS = 0x1
+DDSD_HEIGHT = 0x2
+DDSD_WIDTH = 0x4
+DDSD_PIXELFORMAT = 0x1000
+DDSD_MIPMAPCOUNT = 0x20000
+DDSD_LINEARSIZE = 0x80000
+DDSCAPS_TEXTURE = 0x1000
+DDSCAPS_COMPLEX = 0x8
+DDSCAPS_MIPMAP = 0x400000
+DDPF_FOURCC = 0x4
+DDPF_RGB = 0x40
+DDPF_ALPHAPIXELS = 0x1
+
+
+class TexFile:
+    """Represents a League of Legends .tex texture file."""
+
+    __slots__ = ('width', 'height', 'format', 'mipmaps', 'data')
+
+    def __init__(self, width=0, height=0, fmt=FMT_DXT5, mipmaps=False, data=b''):
+        self.width = width
+        self.height = height
+        self.format = fmt
+        self.mipmaps = mipmaps
+        self.data = data  # raw compressed/uncompressed data (single blob)
+
+    @staticmethod
+    def read(path):
+        """Read a TEX file from disk. Returns a TexFile instance."""
+        with open(path, 'rb') as f:
+            raw = f.read()
+        return TexFile.from_bytes(raw, path)
+
+    @staticmethod
+    def from_bytes(raw, path='<memory>'):
+        """Parse TEX from a bytes object."""
+        if len(raw) < 12:
+            raise ValueError('TEX file too small: {} bytes'.format(len(raw)))
+
+        sig, width, height, unk1, fmt, unk2, mips = struct.unpack_from('<IHHBBBB', raw, 0)
+        if sig != TEX_SIGNATURE:
+            raise ValueError('Invalid TEX signature in {}: 0x{:08X}'.format(path, sig))
+        if fmt not in BLOCK_INFO:
+            raise ValueError('Unsupported TEX format: {}'.format(fmt))
+
+        tex = TexFile(width, height, fmt, bool(mips))
+        tex.data = raw[12:]
+        return tex
+
+    def write(self, path):
+        """Write TEX file to disk."""
+        with open(path, 'wb') as f:
+            f.write(self.to_bytes())
+
+    def to_bytes(self):
+        """Serialize to TEX bytes."""
+        header = struct.pack('<IHHBBBB',
+                             TEX_SIGNATURE,
+                             self.width, self.height,
+                             1, self.format, 0,
+                             1 if self.mipmaps else 0)
+        return header + self.data
+
+    def mipmap_count(self):
+        """Calculate the number of mipmap levels for this texture."""
+        if not self.mipmaps:
+            return 1
+        max_dim = max(self.width, self.height)
+        if max_dim == 0:
+            return 1
+        return max_dim.bit_length()
+
+    def mip_data_sizes(self):
+        """Return list of (width, height, byte_size) for each mip level, largest first."""
+        block_size, bpb = BLOCK_INFO[self.format]
+        count = self.mipmap_count()
+        levels = []
+        for i in range(count):
+            w = max(self.width >> i, 1)
+            h = max(self.height >> i, 1)
+            bw = (w + block_size - 1) // block_size
+            bh = (h + block_size - 1) // block_size
+            levels.append((w, h, bw * bh * bpb))
+        return levels
+
+    def get_largest_mip_data(self):
+        """Extract the largest mipmap level data from the raw data blob.
+        TEX stores mipmaps smallest-to-largest, so the largest is at the end."""
+        if not self.mipmaps:
+            return self.data
+
+        levels = self.mip_data_sizes()  # largest first
+        # Data is stored smallest-to-largest in the file,
+        # so we need to skip past all smaller mips
+        offset = 0
+        for i in range(len(levels) - 1, 0, -1):
+            offset += levels[i][2]
+
+        largest_size = levels[0][2]
+        return self.data[offset:offset + largest_size]
+
+
+def tex_to_dds_bytes(tex):
+    """Convert a TexFile to DDS file bytes for GIMP's native DDS loader.
+    Reverses mipmap order (TEX: small-to-large -> DDS: large-to-small)."""
+
+    mip_count = tex.mipmap_count()
+    levels = tex.mip_data_sizes()  # largest first
+
+    # Build DDS pixel format
+    if tex.format == FMT_DXT1:
+        pf_flags = DDPF_FOURCC
+        fourcc = b'DXT1'
+        pf_rgb_bits = 0
+        pf_rmask = pf_gmask = pf_bmask = pf_amask = 0
+    elif tex.format == FMT_DXT5:
+        pf_flags = DDPF_FOURCC
+        fourcc = b'DXT5'
+        pf_rgb_bits = 0
+        pf_rmask = pf_gmask = pf_bmask = pf_amask = 0
+    elif tex.format == FMT_BGRA8:
+        pf_flags = DDPF_RGB | DDPF_ALPHAPIXELS
+        fourcc = b'\x00\x00\x00\x00'
+        pf_rgb_bits = 32
+        pf_rmask = 0x00FF0000
+        pf_gmask = 0x0000FF00
+        pf_bmask = 0x000000FF
+        pf_amask = 0xFF000000
+    else:
+        raise ValueError('Cannot convert TEX format {} to DDS'.format(tex.format))
+
+    # DDS header flags (matches Aventurine's DDS_HEADER_FLAGS_TEXTURE = 0x1007)
+    flags = DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT
+    caps = DDSCAPS_TEXTURE
+    if tex.mipmaps and mip_count > 1:
+        flags |= DDSD_MIPMAPCOUNT
+        caps |= DDSCAPS_COMPLEX | DDSCAPS_MIPMAP
+
+    # dwPitchOrLinearSize
+    if tex.format in (FMT_DXT1, FMT_DXT5):
+        flags |= DDSD_LINEARSIZE
+        block_size, bpb = BLOCK_INFO[tex.format]
+        pitch_or_linear_size = ((tex.width + 3) // 4) * ((tex.height + 3) // 4) * bpb
+    else:
+        pitch_or_linear_size = tex.width * 4
+
+    # Pixel format struct (32 bytes)
+    pixel_format = struct.pack('<II4sIIIII',
+                               32,  # dwSize
+                               pf_flags,
+                               fourcc,
+                               pf_rgb_bits,
+                               pf_rmask, pf_gmask, pf_bmask, pf_amask)
+
+    # DDS header (124 bytes total):
+    #   7 uint32 fields (28) + dwReserved1[11] (44) = 72
+    #   + pixel format (32) = 104
+    #   + dwCaps..dwCaps4 (16) + dwReserved2 (4) = 124
+    header = struct.pack('<IIIIIII44s',
+                         DDS_HEADER_SIZE,       # dwSize = 124
+                         flags,                 # dwFlags
+                         tex.height,            # dwHeight
+                         tex.width,             # dwWidth
+                         pitch_or_linear_size,  # dwPitchOrLinearSize
+                         0,                     # dwDepth
+                         mip_count if tex.mipmaps else 0,  # dwMipMapCount
+                         b'\x00' * 44)          # dwReserved1[11]
+
+    header += pixel_format                      # ddspf (32 bytes)
+    header += struct.pack('<IIIII',
+                          caps,                 # dwCaps
+                          0, 0, 0,              # dwCaps2, dwCaps3, dwCaps4
+                          0)                    # dwReserved2
+
+    assert len(header) == 124, 'DDS header is {} bytes, expected 124'.format(len(header))
+
+    # Magic (4 bytes) + header (124 bytes) = 128 bytes total
+    out = struct.pack('<I', DDS_MAGIC) + header
+
+    # Reverse mipmap data: TEX stores small-to-large, DDS needs large-to-small
+    if tex.mipmaps and mip_count > 1:
+        # Split TEX data into mip chunks (stored small-to-large)
+        tex_chunks = []
+        offset = 0
+        for i in range(len(levels) - 1, -1, -1):
+            size = levels[i][2]
+            tex_chunks.append(tex.data[offset:offset + size])
+            offset += size
+
+        # tex_chunks is now small-to-large, reverse for DDS (large-to-small)
+        for chunk in reversed(tex_chunks):
+            out += chunk
+    else:
+        out += tex.data
+
+    return out
+
+
+def tex_to_temp_dds(tex):
+    """Convert TEX to a temporary DDS file on disk. Returns the temp file path.
+    Caller is responsible for deleting the file."""
+    dds_bytes = tex_to_dds_bytes(tex)
+    fd, path = tempfile.mkstemp(suffix='.dds')
+    try:
+        os.write(fd, dds_bytes)
+    finally:
+        os.close(fd)
+    return path
+
+
+def rgba_to_tex_data(rgba, width, height, fmt, mipmaps=False, compressor=None):
+    """Convert RGBA pixel data to TEX file data (header + compressed payload).
+
+    Args:
+        rgba: bytes, RGBA pixel data (width * height * 4 bytes)
+        width: image width
+        height: image height
+        fmt: FMT_DXT1, FMT_DXT5, or FMT_BGRA8
+        mipmaps: whether to generate mipmaps
+        compressor: function(rgba_bytes, width, height, fmt) -> compressed_bytes
+                    Required for DXT formats. Ignored for BGRA8.
+
+    Returns:
+        TexFile instance ready to write
+    """
+    if fmt in (FMT_DXT1, FMT_DXT5) and compressor is None:
+        raise ValueError('Compressor function required for DXT formats')
+
+    if fmt in (FMT_DXT1, FMT_DXT5):
+        if width % 4 != 0 or height % 4 != 0:
+            raise ValueError(
+                'Dimensions must be divisible by 4 for DXT compression. '
+                'Got {}x{}, try {}x{}'.format(
+                    width, height, ((width + 3) // 4) * 4, ((height + 3) // 4) * 4))
+
+    tex = TexFile(width, height, fmt, mipmaps)
+
+    if not mipmaps:
+        tex.data = _compress_level(rgba, width, height, fmt, compressor)
+    else:
+        # Generate mipmap chain and store smallest-to-largest
+        mip_levels = _generate_mipmap_chain(rgba, width, height, fmt, compressor)
+        # mip_levels is largest-to-smallest, reverse for TEX storage
+        tex.data = b''.join(reversed(mip_levels))
+
+    return tex
+
+
+def _compress_level(rgba, width, height, fmt, compressor):
+    """Compress a single mip level."""
+    if fmt == FMT_BGRA8:
+        return _rgba_to_bgra(rgba, width, height)
+    else:
+        return compressor(rgba, width, height, fmt)
+
+
+def _rgba_to_bgra(rgba, width, height):
+    """Convert RGBA bytes to BGRA bytes. Uses native DLL if available."""
+    try:
+        from dxt_compress import rgba_to_bgra
+        return rgba_to_bgra(rgba, width * height)
+    except Exception:
+        pass
+    # Pure Python fallback
+    out = bytearray(len(rgba))
+    for i in range(0, len(rgba), 4):
+        out[i] = rgba[i + 2]      # B
+        out[i + 1] = rgba[i + 1]  # G
+        out[i + 2] = rgba[i]      # R
+        out[i + 3] = rgba[i + 3]  # A
+    return bytes(out)
+
+
+def _generate_mipmap_chain(rgba, width, height, fmt, compressor):
+    """Generate all mipmap levels from largest to smallest.
+    Returns list of compressed data chunks, largest first."""
+    max_dim = max(width, height)
+    mip_count = max_dim.bit_length()
+
+    levels = []
+    current_rgba = rgba
+    current_w = width
+    current_h = height
+
+    for i in range(mip_count):
+        compressed = _compress_level(current_rgba, current_w, current_h, fmt, compressor)
+        levels.append(compressed)
+
+        # Downsample for next level
+        if current_w > 1 or current_h > 1:
+            new_w = max(current_w // 2, 1)
+            new_h = max(current_h // 2, 1)
+            current_rgba = _downsample_lanczos3(current_rgba, current_w, current_h, new_w, new_h)
+            current_w = new_w
+            current_h = new_h
+
+    return levels
+
+
+def _downsample_lanczos3(rgba, src_w, src_h, dst_w, dst_h):
+    """Downsample using native DLL if available, else pure Python."""
+    try:
+        from dxt_compress import downsample_lanczos3 as _native_downsample
+        return _native_downsample(rgba, src_w, src_h, dst_w, dst_h)
+    except Exception:
+        pass
+    return _downsample_lanczos3_pure(rgba, src_w, src_h, dst_w, dst_h)
+
+
+def _lanczos_kernel(x, a=3.0):
+    """Lanczos kernel function."""
+    if x == 0.0:
+        return 1.0
+    if x < -a or x > a:
+        return 0.0
+    pix = math.pi * x
+    return (math.sin(pix) / pix) * (math.sin(pix / a) / (pix / a))
+
+
+def _downsample_lanczos3_pure(rgba, src_w, src_h, dst_w, dst_h):
+    """Pure Python Lanczos3 downsampling fallback."""
+    a = 3.0
+    scale_x = src_w / dst_w
+    scale_y = src_h / dst_h
+    dst = bytearray(dst_w * dst_h * 4)
+
+    for y in range(dst_h):
+        src_y = (y + 0.5) * scale_y - 0.5
+        y0 = max(0, int(math.floor(src_y - a)))
+        y1 = min(src_h - 1, int(math.ceil(src_y + a)))
+
+        for x in range(dst_w):
+            src_x = (x + 0.5) * scale_x - 0.5
+            x0 = max(0, int(math.floor(src_x - a)))
+            x1 = min(src_w - 1, int(math.ceil(src_x + a)))
+
+            r = g = b = al = 0.0
+            weight_sum = 0.0
+
+            for sy in range(y0, y1 + 1):
+                wy = _lanczos_kernel(sy - src_y, a)
+                for sx in range(x0, x1 + 1):
+                    wx = _lanczos_kernel(sx - src_x, a)
+                    w = wx * wy
+                    idx = (sy * src_w + sx) * 4
+                    r += rgba[idx] * w
+                    g += rgba[idx + 1] * w
+                    b += rgba[idx + 2] * w
+                    al += rgba[idx + 3] * w
+                    weight_sum += w
+
+            dst_idx = (y * dst_w + x) * 4
+            if weight_sum > 0:
+                dst[dst_idx] = max(0, min(255, int(r / weight_sum + 0.5)))
+                dst[dst_idx + 1] = max(0, min(255, int(g / weight_sum + 0.5)))
+                dst[dst_idx + 2] = max(0, min(255, int(b / weight_sum + 0.5)))
+                dst[dst_idx + 3] = max(0, min(255, int(al / weight_sum + 0.5)))
+
+    return bytes(dst)

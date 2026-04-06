@@ -1,0 +1,20 @@
+# Compiled DLL (build from shared/dxt_compress.c)
+*.dll
+
+# Build artifacts
+*.obj
+*.lib
+*.exp
+*.pdb
+*.bat
+
+# Release artifacts
+release/
+installer/*.exe
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Logs
+*.log

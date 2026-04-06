@@ -1,0 +1,112 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: dxt_compress.dll
+            cmd: cl /O2 /LD /Fe:dxt_compress.dll dxt_compress.c
+          - os: ubuntu-latest
+            artifact: dxt_compress.so
+            cmd: gcc -shared -O3 -o dxt_compress.so dxt_compress.c -lm
+          - os: macos-latest
+            artifact: dxt_compress.dylib
+            cmd: gcc -dynamiclib -O3 -o dxt_compress.dylib dxt_compress.c -lm
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build
+        working-directory: shared
+        run: ${{ matrix.cmd }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: shared/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Copy DLL for installer
+        shell: bash
+        run: cp artifacts/dxt_compress.dll/dxt_compress.dll shared/dxt_compress.dll
+
+      - name: Build installer
+        shell: cmd
+        run: iscc installer\GIMP_TEX_Plugin_Setup.iss
+
+      - name: Build release zips
+        shell: bash
+        run: |
+          # GIMP 3 - Windows
+          mkdir -p gimp3_win
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dll/dxt_compress.dll gimp3_win/
+          powershell Compress-Archive -Path 'gimp3_win/*' -DestinationPath GIMP3_TEX_Plugin_Windows.zip
+
+          # GIMP 3 - macOS
+          mkdir -p gimp3_mac
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dylib/dxt_compress.dylib gimp3_mac/
+          tar -czf GIMP3_TEX_Plugin_macOS.tar.gz -C gimp3_mac .
+
+          # GIMP 3 - Linux
+          mkdir -p gimp3_linux
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.so/dxt_compress.so gimp3_linux/
+          tar -czf GIMP3_TEX_Plugin_Linux.tar.gz -C gimp3_linux .
+
+          # GIMP 2 - Windows
+          mkdir -p gimp2_win/gimp2_tex_libs
+          cp gimp2/gimp2_tex_plugin.py gimp2_win/
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dll/dxt_compress.dll gimp2_win/gimp2_tex_libs/
+          powershell Compress-Archive -Path 'gimp2_win/*' -DestinationPath GIMP2_TEX_Plugin_Windows.zip
+
+          # GIMP 2 - macOS
+          mkdir -p gimp2_mac/gimp2_tex_libs
+          cp gimp2/gimp2_tex_plugin.py gimp2_mac/
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dylib/dxt_compress.dylib gimp2_mac/gimp2_tex_libs/
+          tar -czf GIMP2_TEX_Plugin_macOS.tar.gz -C gimp2_mac .
+
+          # GIMP 2 - Linux
+          mkdir -p gimp2_linux/gimp2_tex_libs
+          cp gimp2/gimp2_tex_plugin.py gimp2_linux/
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.so/dxt_compress.so gimp2_linux/gimp2_tex_libs/
+          tar -czf GIMP2_TEX_Plugin_Linux.tar.gz -C gimp2_linux .
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/GIMP_TEX_Plugin_Setup.exe
+            GIMP3_TEX_Plugin_Windows.zip
+            GIMP3_TEX_Plugin_macOS.tar.gz
+            GIMP3_TEX_Plugin_Linux.tar.gz
+            GIMP2_TEX_Plugin_Windows.zip
+            GIMP2_TEX_Plugin_macOS.tar.gz
+            GIMP2_TEX_Plugin_Linux.tar.gz

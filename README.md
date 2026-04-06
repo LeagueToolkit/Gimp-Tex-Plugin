@@ -1,188 +1,127 @@
-# https://github.com/RitoShark/TexThumbnailProvider 
-## INSTALL GUISAIS TEX THUMBNAIL PROVIDER FOR THE FILE EXPLORER
+# GIMP TEX Plugin
 
-# GIMP 3.0 TEX Plugin v3.0
+Load and export League of Legends `.tex` texture files in GIMP.
 
-**Load & Export League of Legends `.tex` Texture Files**
-
-> **Note:**
-> GIMP 3.0 currently shows error dialogs when opening `.tex` files — but they still load correctly.
-> This plugin includes an optional **auto-closer** that automatically dismisses those dialogs.
-
----
+Supports **GIMP 2.x** and **GIMP 3.x**.
 
 ## Installation
 
-1. Run the setup file for your GIMP version:
+Download from [Releases](https://github.com/LeagueToolkit/Gimp-Tex-Plugin/releases):
 
-   * `GIMP_3_TEX_Plugin_Setup.exe` → for **GIMP 3.0**
-   * `GIMP_2_TEX_Plugin_Setup.exe` → for **GIMP 2.10**
+| File | Description |
+|------|-------------|
+| `GIMP_TEX_Plugin_Setup.exe` | Installer — auto-detects GIMP version(s) |
+| `GIMP3_TEX_Plugin.zip` | Manual install for GIMP 3.x |
+| `GIMP2_TEX_Plugin.zip` | Manual install for GIMP 2.x |
 
-2. Follow the installer:
+### Installer
 
-   * The installer auto-detects your GIMP installation
-   * Check **“Install Error Dialog Auto-Closer”** (recommended)
-   * Click **Install**
+Run the `.exe` and follow the prompts. Restart GIMP.
 
-3. Restart GIMP if it’s running
+### Manual Install (GIMP 3.x)
 
-4. Installation complete
+Extract `GIMP3_TEX_Plugin.zip` into a folder called `gimp3_tex_plugin` inside your GIMP plug-ins directory:
 
----
+```
+%APPDATA%\GIMP\<version>\plug-ins\gimp3_tex_plugin\
+```
 
-## Usage
+### Manual Install (GIMP 2.x)
 
-### Opening `.tex` Files
+Extract `GIMP2_TEX_Plugin.zip` into your GIMP plug-ins directory:
 
-* Go to **File → Open** and select your `.tex` file
-* Or drag and drop `.tex` files into GIMP
+```
+%APPDATA%\GIMP\<version>\plug-ins\
+```
 
-### Exporting as `.tex`
+This places `gimp2_tex_plugin.py` directly in `plug-ins/` and the shared files in `plug-ins/gimp2_tex_libs/`.
 
-* Use **File → Export As**
-* Enter a filename ending with `.tex`
-* Or select **“League of Legends TEX”** from the file type dropdown
-
----
-
-## Features
-
-* Load **DXT1**, **DXT5**, and **BGRA8** texture formats
-* Export images as `.tex` files
-* Support for **mipmapped textures**
-* Optional **auto-close** for GIMP 3.0 error dialogs
-
----
-
-## Error Dialog Auto-Closer
-
-### What It Does
-
-* Automatically closes the **“GIMP Message”** dialog caused by a GIMP 3.0 Windows bug
-* This is purely cosmetic; the files still load correctly
-
-### Enable / Disable
-
-* Enabled by default during installation
-* To disable:
-
-  * Delete `close_gimp_tex_error.py` from the plugin folder
-  * Or reinstall without checking the auto-closer option
+After manual install, restart GIMP.
 
 ---
 
 ## Uninstallation
 
-1. Open **Windows Settings → Apps → Installed Apps**
-2. Find **“GIMP 3.0 TEX Plugin”**
-3. Click **Uninstall**
-4. Restart GIMP
+**If installed via the installer:** Open Windows Settings > Apps > Installed Apps, find "GIMP TEX Plugin", and click Uninstall.
+
+**If installed manually:** Delete the plugin files:
+- GIMP 3.x: delete `%APPDATA%\GIMP\<version>\plug-ins\gimp3_tex_plugin\`
+- GIMP 2.x: delete `gimp2_tex_plugin.py` and the `gimp2_tex_libs\` folder from `plug-ins\`
+
+Restart GIMP.
 
 ---
 
-## Requirements
+## Usage
 
-* **GIMP 3.0** or later (includes Python support)
-* **Windows 7** or later
+### Opening TEX files
+
+**File > Open** and select a `.tex` file, or drag and drop.
+
+### Exporting TEX files
+
+**Quick export** — File > Export As, set the filename to `.tex`, hit Export. Uses your last-used settings (defaults to DXT5 with dithering).
+
+**Export with options** — File > Export as .tex (options)... Opens a dialog where you can configure compression settings before exporting.
 
 ---
 
-## Troubleshooting
+## Export Options
 
-### Plugin doesn’t appear
+### Compression Format
 
-* Make sure GIMP is fully closed and restart it
-* Verify this folder exists:
+| Format | Description |
+|--------|-------------|
+| **DXT1 (BC1)** | 4:1 compression. No alpha channel. Best file size for opaque textures. |
+| **DXT5 (BC3)** | 4:1 compression. Full 8-bit alpha channel. Use for textures with transparency. |
+| **BGRA8** | Uncompressed. 32-bit BGRA. Largest file size, no quality loss. |
 
-  ```
-  %APPDATA%\GIMP\3.0\plug-ins\gimp_tex_plugin_3\
-  ```
-* Check the log file:
+DXT1 and DXT5 require image dimensions divisible by 4. If your image isn't, the plugin will tell you the nearest valid size.
 
-  ```
-  %USERPROFILE%\gimp_tex_plugin_3.log
-  ```
+### Error Diffusion Dithering
 
-### “GIMP 3.0 not found” during installation
+Applies [Floyd-Steinberg dithering](https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering) during DXT compression. This reduces visible banding on gradients and smooth color transitions by spreading quantization error across neighboring pixels within each 4x4 block.
 
-* Ensure you have **GIMP 3.0**, not 2.10
-* For GIMP 2.10, use `GIMP_TEX_Plugin_Setup.exe`
+**Recommended: On.** The quality improvement is significant on most textures with minimal performance cost.
 
-### Files won’t open
+Only available for DXT1 and DXT5 formats (BGRA8 is uncompressed and doesn't need dithering).
 
-* Confirm the file is a valid **League of Legends `.tex`** file
-* Check:
+### Error Metric
 
-  ```
-  %USERPROFILE%\gimp_tex_plugin_3.log
-  ```
+Controls how color differences are measured during DXT compression:
 
-### Error dialog still appears
+| Metric | Description |
+|--------|-------------|
+| **Perceptual** | Weights color channels by human visual sensitivity (green > red > blue). Produces results that look better to the human eye. Based on BT.709 luminance coefficients. |
+| **Uniform** | Treats all color channels equally. May be preferable for non-photographic textures. |
 
-* Ensure the **auto-closer** is installed
-* Check if it’s running:
+**Recommended: Perceptual** for most textures. Use Uniform only for textures where mathematical accuracy matters more than visual quality.
 
-  ```
-  %USERPROFILE%\gimp_error_closer.log
-  ```
-* Restart GIMP
+Only available when dithering is enabled.
 
-### Export not working
+### Generate Mipmaps
 
-* Use **Export As** (not **Save**)
-* Type `.tex` manually at the end of the filename
+Generates a full mipmap chain using Lanczos3 resampling. Each mipmap level is half the resolution of the previous one, down to 1x1.
+
+Mipmaps are used by the game engine for level-of-detail rendering. When enabled, the file size increases by roughly 33%.
+
+**Recommended: Off** unless you know the texture needs mipmaps. Most League of Legends textures get resized in real time.
 
 ---
 
 ## Supported Formats
 
-* DXT1 (compressed)
-* DXT5 (compressed)
-* BGRA8 (uncompressed)
-* Files with or without mipmaps
-
----
-
-## Log Files
-
-* Main plugin log:
-
-  ```
-  %USERPROFILE%\gimp_tex_plugin_3.log
-  ```
-* Error closer log:
-
-  ```
-  %USERPROFILE%\gimp_error_closer.log
-  ```
+| Format | Load | Export |
+|--------|------|--------|
+| DXT1 (BC1) | Yes | Yes |
+| DXT5 (BC3) | Yes | Yes |
+| BGRA8 | Yes | Yes |
+| Mipmaps | Yes | Yes |
 
 ---
 
 ## Credits
 
-* Original `.tex` logic by **LtMAO**
-
-  * [GitHub: tarngaina/LtMAO](https://github.com/tarngaina/LtMAO)
-* GIMP 3.0 version and auto-close feature developed for the **League of Legends modding community**
-
----
-
-## Version History
-
-**v3.0 (2024)**
-
-* Full GIMP 3.0 support
-* Auto-close error dialog feature
-* Improved export handling
-* Enhanced error reporting
-
-**v1.0 (Original)**
-
-* Initial GIMP 2.10 support
-* Basic load/save functionality
-
----
-
-Would you like me to format this as a **GitHub-ready README.md** (with proper code fences, section dividers, and link formatting)? I can make it copy-paste–ready for your repo.
-
-
+- TEX format handling based on work by [LtMAO](https://github.com/tarngaina/LtMAO)
+- DXT compression ported from [Microsoft DirectXTex](https://github.com/microsoft/DirectXTex) (MIT License)
+- Built for the League of Legends modding community
