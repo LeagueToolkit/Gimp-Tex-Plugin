@@ -56,7 +56,7 @@ jobs:
 
       - name: Copy DLL for installer
         shell: bash
-        run: cp artifacts/libdxtcompress.dll/libdxtcompress.dll shared/dxt_compress.dll
+        run: cp artifacts/libdxtcompress.dll/libdxtcompress.dll shared/libdxtcompress.dll
 
       - name: Build installer
         shell: cmd
