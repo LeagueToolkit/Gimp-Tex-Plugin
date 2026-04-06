@@ -92,28 +92,49 @@ def load_tex(procedure, run_mode, file, metadata, flags, config, data):
         _log_msg("TEX: {}x{}, format={}, mipmaps={}".format(
             tex.width, tex.height, tex.format, tex.mipmaps))
 
-        dds_path = tex_to_temp_dds(tex)
+        image = None
 
-        try:
-            dds_file = Gio.File.new_for_path(dds_path)
-            pdb_proc = Gimp.get_pdb().lookup_procedure('file-dds-load')
-            pdb_config = pdb_proc.create_config()
-            pdb_config.set_property('run-mode', Gimp.RunMode.NONINTERACTIVE)
-            pdb_config.set_property('file', dds_file)
-            pdb_config.set_property('load-mipmaps', False)
-            pdb_config.set_property('flip-image', False)
-
-            result = pdb_proc.run(pdb_config)
-            status = result.index(0)
-            if status != Gimp.PDBStatusType.SUCCESS:
-                raise RuntimeError("DDS load failed with status {}".format(status))
-
-            image = result.index(1)
-        finally:
+        # Try DDS plugin first (fast, native decompression)
+        pdb_proc = Gimp.get_pdb().lookup_procedure('file-dds-load')
+        if pdb_proc is not None:
+            _log_msg("Using DDS plugin to load")
+            dds_path = tex_to_temp_dds(tex)
             try:
-                os.unlink(dds_path)
-            except Exception:
-                pass
+                dds_file = Gio.File.new_for_path(dds_path)
+                pdb_config = pdb_proc.create_config()
+                pdb_config.set_property('run-mode', Gimp.RunMode.NONINTERACTIVE)
+                pdb_config.set_property('file', dds_file)
+                pdb_config.set_property('load-mipmaps', False)
+                pdb_config.set_property('flip-image', False)
+
+                result = pdb_proc.run(pdb_config)
+                status = result.index(0)
+                if status == Gimp.PDBStatusType.SUCCESS:
+                    image = result.index(1)
+                else:
+                    _log_msg("DDS plugin failed with status {}, falling back".format(status))
+            finally:
+                try:
+                    os.unlink(dds_path)
+                except Exception:
+                    pass
+
+        # Fallback: decompress directly in Python
+        if image is None:
+            _log_msg("Using built-in decompression")
+            rgba = tex.decompress_to_rgba()
+
+            image = Gimp.Image.new(tex.width, tex.height, Gimp.ImageBaseType.RGB)
+            layer = Gimp.Layer.new(image, "Background", tex.width, tex.height,
+                                   Gimp.ImageType.RGBA_IMAGE, 100.0,
+                                   Gimp.LayerMode.NORMAL)
+            image.insert_layer(layer, None, 0)
+
+            buffer = layer.get_buffer()
+            rect = Gegl.Rectangle()
+            rect.x, rect.y, rect.width, rect.height = 0, 0, tex.width, tex.height
+            buffer.set(rect, "R'G'B'A u8", rgba)
+            buffer.flush()
 
         image.set_file(file)
         _log_msg("Load successful!")

@@ -140,6 +140,135 @@ class TexFile:
         largest_size = levels[0][2]
         return self.data[offset:offset + largest_size]
 
+    def decompress_to_rgba(self):
+        """Decompress texture data to RGBA bytes. No external dependencies."""
+        data = self.get_largest_mip_data()
+        w, h = self.width, self.height
+
+        if self.format == FMT_BGRA8:
+            rgba = bytearray(w * h * 4)
+            for i in range(0, len(data) - 3, 4):
+                rgba[i] = data[i + 2]      # R
+                rgba[i + 1] = data[i + 1]  # G
+                rgba[i + 2] = data[i]      # B
+                rgba[i + 3] = data[i + 3]  # A
+            return bytes(rgba)
+
+        elif self.format == FMT_DXT1:
+            return _decompress_dxt1(data, w, h)
+
+        elif self.format == FMT_DXT5:
+            return _decompress_dxt5(data, w, h)
+
+        else:
+            raise ValueError('Cannot decompress format {}'.format(self.format))
+
+
+def _decompress_dxt1(data, width, height):
+    """Decompress DXT1/BC1 data to RGBA."""
+    rgba = bytearray(width * height * 4)
+    block_w = (width + 3) // 4
+    block_h = (height + 3) // 4
+
+    for by in range(block_h):
+        for bx in range(block_w):
+            off = (by * block_w + bx) * 8
+            if off + 8 > len(data):
+                break
+
+            c0 = data[off] | (data[off + 1] << 8)
+            c1 = data[off + 2] | (data[off + 3] << 8)
+            bits = data[off + 4] | (data[off + 5] << 8) | (data[off + 6] << 16) | (data[off + 7] << 24)
+
+            # Decode RGB565
+            r0 = ((c0 >> 11) & 0x1F); r0 = (r0 << 3) | (r0 >> 2)
+            g0 = ((c0 >> 5) & 0x3F);  g0 = (g0 << 2) | (g0 >> 4)
+            b0 = (c0 & 0x1F);         b0 = (b0 << 3) | (b0 >> 2)
+            r1 = ((c1 >> 11) & 0x1F); r1 = (r1 << 3) | (r1 >> 2)
+            g1 = ((c1 >> 5) & 0x3F);  g1 = (g1 << 2) | (g1 >> 4)
+            b1 = (c1 & 0x1F);         b1 = (b1 << 3) | (b1 >> 2)
+
+            colors = [(r0, g0, b0, 255), (r1, g1, b1, 255)]
+            if c0 > c1:
+                colors.append(((2*r0+r1)//3, (2*g0+g1)//3, (2*b0+b1)//3, 255))
+                colors.append(((r0+2*r1)//3, (g0+2*g1)//3, (b0+2*b1)//3, 255))
+            else:
+                colors.append(((r0+r1)//2, (g0+g1)//2, (b0+b1)//2, 255))
+                colors.append((0, 0, 0, 0))
+
+            for py in range(4):
+                for px in range(4):
+                    x = bx * 4 + px
+                    y = by * 4 + py
+                    if x < width and y < height:
+                        idx = (bits >> ((py * 4 + px) * 2)) & 3
+                        pi = (y * width + x) * 4
+                        c = colors[idx]
+                        rgba[pi] = c[0]; rgba[pi+1] = c[1]
+                        rgba[pi+2] = c[2]; rgba[pi+3] = c[3]
+
+    return bytes(rgba)
+
+
+def _decompress_dxt5(data, width, height):
+    """Decompress DXT5/BC3 data to RGBA."""
+    rgba = bytearray(width * height * 4)
+    block_w = (width + 3) // 4
+    block_h = (height + 3) // 4
+
+    for by in range(block_h):
+        for bx in range(block_w):
+            off = (by * block_w + bx) * 16
+            if off + 16 > len(data):
+                break
+
+            # Alpha block
+            a0 = data[off]; a1 = data[off + 1]
+            abits = 0
+            for i in range(6):
+                abits |= data[off + 2 + i] << (i * 8)
+
+            alphas = [a0, a1]
+            if a0 > a1:
+                for i in range(1, 7):
+                    alphas.append(((7 - i) * a0 + i * a1) // 7)
+            else:
+                for i in range(1, 5):
+                    alphas.append(((5 - i) * a0 + i * a1) // 5)
+                alphas.append(0)
+                alphas.append(255)
+
+            # Color block
+            c0 = data[off + 8] | (data[off + 9] << 8)
+            c1 = data[off + 10] | (data[off + 11] << 8)
+            bits = data[off + 12] | (data[off + 13] << 8) | (data[off + 14] << 16) | (data[off + 15] << 24)
+
+            r0 = ((c0 >> 11) & 0x1F); r0 = (r0 << 3) | (r0 >> 2)
+            g0 = ((c0 >> 5) & 0x3F);  g0 = (g0 << 2) | (g0 >> 4)
+            b0 = (c0 & 0x1F);         b0 = (b0 << 3) | (b0 >> 2)
+            r1 = ((c1 >> 11) & 0x1F); r1 = (r1 << 3) | (r1 >> 2)
+            g1 = ((c1 >> 5) & 0x3F);  g1 = (g1 << 2) | (g1 >> 4)
+            b1 = (c1 & 0x1F);         b1 = (b1 << 3) | (b1 >> 2)
+
+            colors = [(r0, g0, b0), (r1, g1, b1),
+                      ((2*r0+r1)//3, (2*g0+g1)//3, (2*b0+b1)//3),
+                      ((r0+2*r1)//3, (g0+2*g1)//3, (b0+2*b1)//3)]
+
+            for py in range(4):
+                for px in range(4):
+                    x = bx * 4 + px
+                    y = by * 4 + py
+                    if x < width and y < height:
+                        pidx = py * 4 + px
+                        ci = (bits >> (pidx * 2)) & 3
+                        ai = (abits >> (pidx * 3)) & 7
+                        pi = (y * width + x) * 4
+                        c = colors[ci]
+                        rgba[pi] = c[0]; rgba[pi+1] = c[1]
+                        rgba[pi+2] = c[2]; rgba[pi+3] = alphas[ai]
+
+    return bytes(rgba)
+
 
 def tex_to_dds_bytes(tex):
     """Convert a TexFile to DDS file bytes for GIMP's native DDS loader.
