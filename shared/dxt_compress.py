@@ -129,7 +129,7 @@ def rgba_to_bgra(rgba, num_pixels):
     dll = _init_dll()
     if dll is not None:
         output = ctypes.create_string_buffer(num_pixels * 4)
-        dll.rgba_to_bgra(rgba, output, num_pixels)
+        dll.rgba_to_bgra(bytes(rgba), output, num_pixels)
         return output.raw
     # Pure Python fallback
     out = bytearray(len(rgba))
@@ -147,7 +147,7 @@ def downsample_lanczos3(rgba, src_w, src_h, dst_w, dst_h):
     if dll is not None:
         out_size = dst_w * dst_h * 4
         output = ctypes.create_string_buffer(out_size)
-        dll.downsample_lanczos3(rgba, src_w, src_h, output, dst_w, dst_h)
+        dll.downsample_lanczos3(bytes(rgba), src_w, src_h, output, dst_w, dst_h)
         return output.raw
     # Pure Python fallback imported from tex_core
     from tex_core import _downsample_lanczos3_pure
@@ -183,7 +183,7 @@ def _dll_compress_bc1(dll, rgba, width, height, dither, perceptual):
     block_h = (height + 3) // 4
     out_size = block_w * block_h * 8
     output = ctypes.create_string_buffer(out_size)
-    dll.compress_bc1(rgba, width, height, output, int(dither), int(perceptual))
+    dll.compress_bc1(bytes(rgba), width, height, output, int(dither), int(perceptual))
     return output.raw
 
 
@@ -192,7 +192,7 @@ def _dll_compress_bc3(dll, rgba, width, height, dither, perceptual):
     block_h = (height + 3) // 4
     out_size = block_w * block_h * 16
     output = ctypes.create_string_buffer(out_size)
-    dll.compress_bc3(rgba, width, height, output, int(dither), int(perceptual))
+    dll.compress_bc3(bytes(rgba), width, height, output, int(dither), int(perceptual))
     return output.raw
 
 
