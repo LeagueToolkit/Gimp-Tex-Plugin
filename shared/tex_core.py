@@ -141,10 +141,20 @@ class TexFile:
         return self.data[offset:offset + largest_size]
 
     def decompress_to_rgba(self):
-        """Decompress texture data to RGBA bytes. No external dependencies."""
+        """Decompress texture data to RGBA bytes. Tries native C, falls back to Python."""
         data = self.get_largest_mip_data()
         w, h = self.width, self.height
 
+        # Try native C decompression first (fast)
+        try:
+            from dxt_compress import native_decompress
+            result = native_decompress(data, w, h, self.format)
+            if result is not None:
+                return result
+        except Exception:
+            pass
+
+        # Pure Python fallback
         if self.format == FMT_BGRA8:
             rgba = bytearray(w * h * 4)
             for i in range(0, len(data) - 3, 4):

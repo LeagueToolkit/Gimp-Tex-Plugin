@@ -530,6 +530,149 @@ DLL_EXPORT void compress_bc3(const uint8_t *rgba, int width, int height,
 }
 
 /* --------------------------------------------------------------------------
+ * DXT1/BC1 decompression
+ * -------------------------------------------------------------------------- */
+
+DLL_EXPORT void decompress_bc1(const uint8_t *input, int width, int height, uint8_t *rgba) {
+    int block_w = (width + 3) / 4;
+    int block_h = (height + 3) / 4;
+    int bx, by, px, py;
+
+    for (by = 0; by < block_h; by++) {
+        for (bx = 0; bx < block_w; bx++) {
+            int off = (by * block_w + bx) * 8;
+            uint16_t c0, c1;
+            uint32_t bits;
+            uint8_t r0, g0, b0, r1, g1, b1;
+            uint8_t colors[4][4];
+
+            c0 = input[off] | (input[off + 1] << 8);
+            c1 = input[off + 2] | (input[off + 3] << 8);
+            bits = input[off + 4] | (input[off + 5] << 8) |
+                   (input[off + 6] << 16) | (input[off + 7] << 24);
+
+            r0 = ((c0 >> 11) & 0x1F); r0 = (r0 << 3) | (r0 >> 2);
+            g0 = ((c0 >> 5) & 0x3F);  g0 = (g0 << 2) | (g0 >> 4);
+            b0 = (c0 & 0x1F);         b0 = (b0 << 3) | (b0 >> 2);
+            r1 = ((c1 >> 11) & 0x1F); r1 = (r1 << 3) | (r1 >> 2);
+            g1 = ((c1 >> 5) & 0x3F);  g1 = (g1 << 2) | (g1 >> 4);
+            b1 = (c1 & 0x1F);         b1 = (b1 << 3) | (b1 >> 2);
+
+            colors[0][0] = r0; colors[0][1] = g0; colors[0][2] = b0; colors[0][3] = 255;
+            colors[1][0] = r1; colors[1][1] = g1; colors[1][2] = b1; colors[1][3] = 255;
+            if (c0 > c1) {
+                colors[2][0] = (2*r0+r1)/3; colors[2][1] = (2*g0+g1)/3; colors[2][2] = (2*b0+b1)/3; colors[2][3] = 255;
+                colors[3][0] = (r0+2*r1)/3; colors[3][1] = (g0+2*g1)/3; colors[3][2] = (b0+2*b1)/3; colors[3][3] = 255;
+            } else {
+                colors[2][0] = (r0+r1)/2; colors[2][1] = (g0+g1)/2; colors[2][2] = (b0+b1)/2; colors[2][3] = 255;
+                colors[3][0] = 0; colors[3][1] = 0; colors[3][2] = 0; colors[3][3] = 0;
+            }
+
+            for (py = 0; py < 4; py++) {
+                for (px = 0; px < 4; px++) {
+                    int x = bx * 4 + px, y = by * 4 + py;
+                    if (x < width && y < height) {
+                        int idx = (bits >> ((py * 4 + px) * 2)) & 3;
+                        int pi = (y * width + x) * 4;
+                        rgba[pi]   = colors[idx][0];
+                        rgba[pi+1] = colors[idx][1];
+                        rgba[pi+2] = colors[idx][2];
+                        rgba[pi+3] = colors[idx][3];
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * DXT5/BC3 decompression
+ * -------------------------------------------------------------------------- */
+
+DLL_EXPORT void decompress_bc3(const uint8_t *input, int width, int height, uint8_t *rgba) {
+    int block_w = (width + 3) / 4;
+    int block_h = (height + 3) / 4;
+    int bx, by, px, py, i;
+
+    for (by = 0; by < block_h; by++) {
+        for (bx = 0; bx < block_w; bx++) {
+            int off = (by * block_w + bx) * 16;
+            uint8_t a0, a1, alphas[8];
+            uint64_t abits;
+            uint16_t c0, c1;
+            uint32_t bits;
+            uint8_t r0, g0, b0, r1, g1, b1;
+            uint8_t colors[4][3];
+
+            /* Alpha block */
+            a0 = input[off]; a1 = input[off + 1];
+            abits = 0;
+            for (i = 0; i < 6; i++)
+                abits |= ((uint64_t)input[off + 2 + i] << (i * 8));
+
+            alphas[0] = a0; alphas[1] = a1;
+            if (a0 > a1) {
+                for (i = 1; i < 7; i++)
+                    alphas[i+1] = (uint8_t)(((7-i)*a0 + i*a1) / 7);
+            } else {
+                for (i = 1; i < 5; i++)
+                    alphas[i+1] = (uint8_t)(((5-i)*a0 + i*a1) / 5);
+                alphas[6] = 0; alphas[7] = 255;
+            }
+
+            /* Color block */
+            c0 = input[off+8] | (input[off+9] << 8);
+            c1 = input[off+10] | (input[off+11] << 8);
+            bits = input[off+12] | (input[off+13] << 8) |
+                   (input[off+14] << 16) | (input[off+15] << 24);
+
+            r0 = ((c0 >> 11) & 0x1F); r0 = (r0 << 3) | (r0 >> 2);
+            g0 = ((c0 >> 5) & 0x3F);  g0 = (g0 << 2) | (g0 >> 4);
+            b0 = (c0 & 0x1F);         b0 = (b0 << 3) | (b0 >> 2);
+            r1 = ((c1 >> 11) & 0x1F); r1 = (r1 << 3) | (r1 >> 2);
+            g1 = ((c1 >> 5) & 0x3F);  g1 = (g1 << 2) | (g1 >> 4);
+            b1 = (c1 & 0x1F);         b1 = (b1 << 3) | (b1 >> 2);
+
+            colors[0][0] = r0; colors[0][1] = g0; colors[0][2] = b0;
+            colors[1][0] = r1; colors[1][1] = g1; colors[1][2] = b1;
+            colors[2][0] = (2*r0+r1)/3; colors[2][1] = (2*g0+g1)/3; colors[2][2] = (2*b0+b1)/3;
+            colors[3][0] = (r0+2*r1)/3; colors[3][1] = (g0+2*g1)/3; colors[3][2] = (b0+2*b1)/3;
+
+            for (py = 0; py < 4; py++) {
+                for (px = 0; px < 4; px++) {
+                    int x = bx * 4 + px, y = by * 4 + py;
+                    if (x < width && y < height) {
+                        int pidx = py * 4 + px;
+                        int ci = (bits >> (pidx * 2)) & 3;
+                        int ai = (int)((abits >> (pidx * 3)) & 7);
+                        int pi = (y * width + x) * 4;
+                        rgba[pi]   = colors[ci][0];
+                        rgba[pi+1] = colors[ci][1];
+                        rgba[pi+2] = colors[ci][2];
+                        rgba[pi+3] = alphas[ai];
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * BGRA8 to RGBA conversion
+ * -------------------------------------------------------------------------- */
+
+DLL_EXPORT void decompress_bgra8(const uint8_t *input, int width, int height, uint8_t *rgba) {
+    int i, total = width * height;
+    for (i = 0; i < total; i++) {
+        int off = i * 4;
+        rgba[off]   = input[off + 2]; /* R */
+        rgba[off+1] = input[off + 1]; /* G */
+        rgba[off+2] = input[off];     /* B */
+        rgba[off+3] = input[off + 3]; /* A */
+    }
+}
+
+/* --------------------------------------------------------------------------
  * RGBA <-> BGRA byte swap
  * -------------------------------------------------------------------------- */
 

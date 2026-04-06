@@ -100,6 +100,24 @@ def _init_dll():
         ]
         _dll.rgba_to_bgra.restype = None
 
+        # void decompress_bc1(const uint8_t *input, int width, int height, uint8_t *rgba)
+        _dll.decompress_bc1.argtypes = [
+            ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p
+        ]
+        _dll.decompress_bc1.restype = None
+
+        # void decompress_bc3(const uint8_t *input, int width, int height, uint8_t *rgba)
+        _dll.decompress_bc3.argtypes = [
+            ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p
+        ]
+        _dll.decompress_bc3.restype = None
+
+        # void decompress_bgra8(const uint8_t *input, int width, int height, uint8_t *rgba)
+        _dll.decompress_bgra8.argtypes = [
+            ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_char_p
+        ]
+        _dll.decompress_bgra8.restype = None
+
         _log("DLL loaded successfully - using FAST native compression")
         return _dll
     except Exception as e:
@@ -122,6 +140,24 @@ def compress_for_tex(dither=True, perceptual=True):
         else:
             raise ValueError('DXT compressor does not handle format {}'.format(fmt))
     return _compressor
+
+
+def native_decompress(data, width, height, fmt):
+    """Decompress DXT1/DXT5/BGRA8 via native DLL. Returns RGBA bytes or None if unavailable."""
+    dll = _init_dll()
+    if dll is None:
+        return None
+    out_size = width * height * 4
+    output = ctypes.create_string_buffer(out_size)
+    if fmt == FMT_DXT1:
+        dll.decompress_bc1(bytes(data), width, height, output)
+    elif fmt == FMT_DXT5:
+        dll.decompress_bc3(bytes(data), width, height, output)
+    elif fmt == FMT_BGRA8:
+        dll.decompress_bgra8(bytes(data), width, height, output)
+    else:
+        return None
+    return output.raw
 
 
 def rgba_to_bgra(rgba, num_pixels):
