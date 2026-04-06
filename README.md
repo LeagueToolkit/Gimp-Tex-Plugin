@@ -20,33 +20,43 @@ Run the `.exe` and follow the prompts. Restart GIMP.
 
 ### Manual Install (GIMP 3.x)
 
-Extract `GIMP3_TEX_Plugin.zip` into a folder called `gimp3_tex_plugin` inside your GIMP plug-ins directory:
+Extract the GIMP 3 zip into a folder called `gimp3_tex_plugin` inside your GIMP plug-ins directory:
 
-```
-%APPDATA%\GIMP\<version>\plug-ins\gimp3_tex_plugin\
-```
+| Platform | Plug-ins directory |
+|----------|-------------------|
+| Windows | `%APPDATA%\GIMP\<version>\plug-ins\gimp3_tex_plugin\` |
+| Linux | `~/.config/GIMP/<version>/plug-ins/gimp3_tex_plugin/` |
+| Linux (Flatpak) | `~/.var/app/org.gimp.GIMP/config/GIMP/<version>/plug-ins/gimp3_tex_plugin/` |
+| macOS | `~/Library/Application Support/GIMP/<version>/plug-ins/gimp3_tex_plugin/` |
+
+The release downloads already have the correct permissions. If the plugin isn't detected, run `chmod +x gimp3_tex_plugin.py`.
 
 ### Manual Install (GIMP 2.x)
 
-Extract `GIMP2_TEX_Plugin.zip` into your GIMP plug-ins directory:
+Extract the GIMP 2 zip into your GIMP plug-ins directory. This places `gimp2_tex_plugin.py` directly in `plug-ins/` and the shared files in `plug-ins/gimp2_tex_libs/`.
 
-```
-%APPDATA%\GIMP\<version>\plug-ins\
-```
+| Platform | Plug-ins directory |
+|----------|-------------------|
+| Windows | `%APPDATA%\GIMP\<version>\plug-ins\` |
+| Linux | `~/.config/GIMP/<version>/plug-ins/` |
+| Linux (Flatpak) | `~/.var/app/org.gimp.GIMP/config/GIMP/<version>/plug-ins/` |
+| macOS | `~/Library/Application Support/GIMP/<version>/plug-ins/` |
 
-This places `gimp2_tex_plugin.py` directly in `plug-ins/` and the shared files in `plug-ins/gimp2_tex_libs/`.
+The release downloads already have the correct permissions. If the plugin isn't detected, run `chmod +x gimp2_tex_plugin.py`.
 
 After manual install, restart GIMP.
+
+> **Note:** If you're not sure where your plug-ins directory is, check Edit > Preferences > Folders > Plug-Ins inside GIMP.
 
 ---
 
 ## Uninstallation
 
-**If installed via the installer:** Open Windows Settings > Apps > Installed Apps, find "GIMP TEX Plugin", and click Uninstall.
+**If installed via the installer (Windows):** Open Windows Settings > Apps > Installed Apps, find "GIMP TEX Plugin", and click Uninstall.
 
 **If installed manually:** Delete the plugin files:
-- GIMP 3.x: delete `%APPDATA%\GIMP\<version>\plug-ins\gimp3_tex_plugin\`
-- GIMP 2.x: delete `gimp2_tex_plugin.py` and the `gimp2_tex_libs\` folder from `plug-ins\`
+- GIMP 3.x: delete the `gimp3_tex_plugin` folder from your plug-ins directory
+- GIMP 2.x: delete `gimp2_tex_plugin.py` and the `gimp2_tex_libs` folder from your plug-ins directory
 
 Restart GIMP.
 
@@ -124,4 +134,4 @@ Mipmaps are used by the game engine for level-of-detail rendering. When enabled,
 
 - TEX format handling based on work by [LtMAO](https://github.com/tarngaina/LtMAO)
 - DXT compression ported from [Microsoft DirectXTex](https://github.com/microsoft/DirectXTex) (MIT License)
-- Built for the League of Legends modding community
+- Thanks to MartynasXS for Linux testing
