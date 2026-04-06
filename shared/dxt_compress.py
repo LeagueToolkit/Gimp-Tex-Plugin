@@ -35,11 +35,11 @@ def _log(msg):
 def _find_dll():
     """Search for the native compression library."""
     if sys.platform == 'win32':
-        lib_name = 'dxt_compress.dll'
+        lib_name = 'libdxtcompress.dll'
     elif sys.platform == 'darwin':
-        lib_name = 'dxt_compress.dylib'
+        lib_name = 'libdxtcompress.dylib'
     else:
-        lib_name = 'dxt_compress.so'
+        lib_name = 'libdxtcompress.so'
 
     search_dirs = [
         os.path.dirname(os.path.abspath(__file__)),

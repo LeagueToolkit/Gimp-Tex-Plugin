@@ -12,14 +12,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: dxt_compress.dll
-            cmd: cl /O2 /LD /Fe:dxt_compress.dll dxt_compress.c
+            artifact: libdxtcompress.dll
+            cmd: cl /O2 /LD /Fe:libdxtcompress.dll dxt_compress.c
           - os: ubuntu-latest
-            artifact: dxt_compress.so
-            cmd: gcc -shared -O3 -o dxt_compress.so dxt_compress.c -lm
+            artifact: libdxtcompress.so
+            cmd: gcc -shared -O3 -o libdxtcompress.so dxt_compress.c -lm
           - os: macos-latest
-            artifact: dxt_compress.dylib
-            cmd: gcc -dynamiclib -O3 -o dxt_compress.dylib dxt_compress.c -lm
+            artifact: libdxtcompress.dylib
+            cmd: gcc -dynamiclib -O3 -o libdxtcompress.dylib dxt_compress.c -lm
 
     runs-on: ${{ matrix.os }}
 
@@ -56,7 +56,7 @@ jobs:
 
       - name: Copy DLL for installer
         shell: bash
-        run: cp artifacts/dxt_compress.dll/dxt_compress.dll shared/dxt_compress.dll
+        run: cp artifacts/libdxtcompress.dll/libdxtcompress.dll shared/dxt_compress.dll
 
       - name: Build installer
         shell: cmd
@@ -67,35 +67,39 @@ jobs:
         run: |
           # GIMP 3 - Windows
           mkdir -p gimp3_win
-          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dll/dxt_compress.dll gimp3_win/
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.dll/libdxtcompress.dll gimp3_win/
           powershell Compress-Archive -Path 'gimp3_win/*' -DestinationPath GIMP3_TEX_Plugin_Windows.zip
 
           # GIMP 3 - macOS
           mkdir -p gimp3_mac
-          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dylib/dxt_compress.dylib gimp3_mac/
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.dylib/libdxtcompress.dylib gimp3_mac/
+          chmod +x gimp3_mac/gimp3_tex_plugin.py
           tar -czf GIMP3_TEX_Plugin_macOS.tar.gz -C gimp3_mac .
 
           # GIMP 3 - Linux
           mkdir -p gimp3_linux
-          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.so/dxt_compress.so gimp3_linux/
+          cp gimp3/gimp3_tex_plugin.py shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.so/libdxtcompress.so gimp3_linux/
+          chmod +x gimp3_linux/gimp3_tex_plugin.py
           tar -czf GIMP3_TEX_Plugin_Linux.tar.gz -C gimp3_linux .
 
           # GIMP 2 - Windows
           mkdir -p gimp2_win/gimp2_tex_libs
           cp gimp2/gimp2_tex_plugin.py gimp2_win/
-          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dll/dxt_compress.dll gimp2_win/gimp2_tex_libs/
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.dll/libdxtcompress.dll gimp2_win/gimp2_tex_libs/
           powershell Compress-Archive -Path 'gimp2_win/*' -DestinationPath GIMP2_TEX_Plugin_Windows.zip
 
           # GIMP 2 - macOS
           mkdir -p gimp2_mac/gimp2_tex_libs
           cp gimp2/gimp2_tex_plugin.py gimp2_mac/
-          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.dylib/dxt_compress.dylib gimp2_mac/gimp2_tex_libs/
+          chmod +x gimp2_mac/gimp2_tex_plugin.py
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.dylib/libdxtcompress.dylib gimp2_mac/gimp2_tex_libs/
           tar -czf GIMP2_TEX_Plugin_macOS.tar.gz -C gimp2_mac .
 
           # GIMP 2 - Linux
           mkdir -p gimp2_linux/gimp2_tex_libs
           cp gimp2/gimp2_tex_plugin.py gimp2_linux/
-          cp shared/tex_core.py shared/dxt_compress.py artifacts/dxt_compress.so/dxt_compress.so gimp2_linux/gimp2_tex_libs/
+          chmod +x gimp2_linux/gimp2_tex_plugin.py
+          cp shared/tex_core.py shared/dxt_compress.py artifacts/libdxtcompress.so/libdxtcompress.so gimp2_linux/gimp2_tex_libs/
           tar -czf GIMP2_TEX_Plugin_Linux.tar.gz -C gimp2_linux .
 
       - name: Create release

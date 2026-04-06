@@ -28,14 +28,14 @@ Source: "..\gimp2\gimp2_tex_plugin.py"; DestDir: "{code:GetGIMP2PluginDir}"; Fla
 ; Shared libs in subfolder (plugin adds this to sys.path)
 Source: "..\shared\tex_core.py"; DestDir: "{code:GetGIMP2PluginDir}\gimp2_tex_libs"; Flags: ignoreversion; Check: GIMP2Found
 Source: "..\shared\dxt_compress.py"; DestDir: "{code:GetGIMP2PluginDir}\gimp2_tex_libs"; Flags: ignoreversion; Check: GIMP2Found
-Source: "..\shared\dxt_compress.dll"; DestDir: "{code:GetGIMP2PluginDir}\gimp2_tex_libs"; Flags: ignoreversion; Check: GIMP2Found
+Source: "..\shared\libdxtcompress.dll"; DestDir: "{code:GetGIMP2PluginDir}\gimp2_tex_libs"; Flags: ignoreversion; Check: GIMP2Found
 
 ; ---- GIMP 3.x ----
 ; All files in named subfolder (GIMP 3.x requirement)
 Source: "..\gimp3\gimp3_tex_plugin.py"; DestDir: "{code:GetGIMP3PluginDir}\gimp3_tex_plugin"; Flags: ignoreversion; Check: GIMP3Found
 Source: "..\shared\tex_core.py"; DestDir: "{code:GetGIMP3PluginDir}\gimp3_tex_plugin"; Flags: ignoreversion; Check: GIMP3Found
 Source: "..\shared\dxt_compress.py"; DestDir: "{code:GetGIMP3PluginDir}\gimp3_tex_plugin"; Flags: ignoreversion; Check: GIMP3Found
-Source: "..\shared\dxt_compress.dll"; DestDir: "{code:GetGIMP3PluginDir}\gimp3_tex_plugin"; Flags: ignoreversion; Check: GIMP3Found
+Source: "..\shared\libdxtcompress.dll"; DestDir: "{code:GetGIMP3PluginDir}\gimp3_tex_plugin"; Flags: ignoreversion; Check: GIMP3Found
 
 [Code]
 var
