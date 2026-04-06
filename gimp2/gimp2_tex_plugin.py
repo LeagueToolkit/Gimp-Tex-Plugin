@@ -259,15 +259,14 @@ def _export_tex(image, drawable, filename, fmt, dithering, perceptual, mipmaps):
         filename, fmt, dithering, perceptual, mipmaps))
 
     export_image = pdb.gimp_image_duplicate(image)
-    pdb.gimp_image_flatten(export_image)
 
-    layer = pdb.gimp_image_get_active_drawable(export_image)
-    if layer.type != RGBA_IMAGE:
-        pdb.gimp_layer_add_alpha(layer)
     if export_image.base_type != RGB:
         pdb.gimp_image_convert_rgb(export_image)
 
-    layer = pdb.gimp_image_get_active_drawable(export_image)
+    # Merge layers but preserve alpha (flatten would destroy it)
+    layer = pdb.gimp_image_merge_visible_layers(export_image, CLIP_TO_IMAGE)
+    if layer.type != RGBA_IMAGE:
+        pdb.gimp_layer_add_alpha(layer)
     w = layer.width
     h = layer.height
 
